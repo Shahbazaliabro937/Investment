@@ -154,7 +154,7 @@
         </section>
 
         <!-- Main Content: Investment & Plans -->
-        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+        <div class="grid grid-cols-1 lg:col-cols-3 gap-6">
             
             <!-- 1. Place Investment Card -->
             <div class="lg:col-span-1 card p-6 space-y-4">
@@ -328,9 +328,6 @@
                         // Calculate profit based on how many 24h cycles have passed since last calculation
                         const cycles = Math.floor(hoursPassed / 24); 
                         
-                        // For faster demo, let's just calculate based on the daily return for now
-                        // In a real system, this would be complex. Here, we just add the daily profit once per threshold.
-                        
                         // Simple Demo Logic: Add daily profit for each passing cycle
                         // Since we only check once per hour (thresholdHours = 1), we treat it as one day's profit.
                         profitAdded += dailyProfit; 
@@ -427,114 +424,4 @@
                     const docSnapshot = await transaction.get(userDocRef);
                     if (!docSnapshot.exists()) throw "Document does not exist!";
                     
-                    const currentData = docSnapshot.data();
-                    const availableBalance = currentData.balance;
-
-                    if (availableBalance <= 0) {
-                        showNotification("Insufficient balance for simulated withdrawal.", 'error');
-                        return; // Exit transaction attempt
-                    }
-                    
-                    // Simple logic: Withdraw the current profit, but leave initial investment
-                    const withdrawalAmount = currentData.profit; 
-                    
-                    if (withdrawalAmount > 0) {
-                        transaction.update(userDocRef, {
-                            balance: currentData.invested, // Reset balance to invested amount
-                            profit: 0 // Reset profit to zero
-                        });
-                        showNotification(`Simulated Withdrawal of $${withdrawalAmount.toFixed(2)} processed to Binance.`, 'info');
-                    } else {
-                        showNotification("No profit to withdraw.", 'error');
-                    }
-                });
-            } catch (error) {
-                console.error("Error processing withdrawal simulation:", error);
-                showNotification("Error during withdrawal simulation.", 'error');
-            }
-        }
-
-        // --- Rendering ---
-
-        function renderDashboard(data) {
-            const { balance, invested, profit, investments } = data;
-            
-            // 1. Render KPI Cards
-            document.getElementById('stat-balance').textContent = `$${balance.toFixed(2)}`;
-            document.getElementById('stat-invested').textContent = `$${invested.toFixed(2)}`;
-            document.getElementById('stat-profit').textContent = `$${profit.toFixed(2)}`;
-            
-            const avgRate = calculateAverageRate(investments);
-            document.getElementById('stat-rate').textContent = `${avgRate.toFixed(1)}%`;
-
-            // 2. Render Investments List
-            const listContainer = document.getElementById('investments-list');
-            listContainer.innerHTML = '';
-            
-            if (!investments || investments.length === 0) {
-                document.getElementById('no-investments-msg').classList.remove('hidden');
-                return;
-            }
-            document.getElementById('no-investments-msg').classList.add('hidden');
-
-            investments.forEach(inv => {
-                const item = document.createElement('div');
-                item.className = 'bg-gray-50 p-4 rounded-lg border-l-4 border-accent-green shadow-sm flex justify-between items-center';
-                item.innerHTML = `
-                    <div>
-                        <p class="font-bold text-primary-dark">Plan: $${inv.amount} USDT</p>
-                        <p class="text-sm text-gray-600">${inv.rate}% Daily Return</p>
-                        <p class="text-xs text-gray-400">Since: ${inv.startDate}</p>
-                    </div>
-                    <div class="text-right">
-                        <p class="text-lg font-bold text-accent-green">+$${inv.dailyReturn.toFixed(2)} / Day</p>
-                        <span class="text-xs font-semibold text-white bg-accent-blue px-2 py-0.5 rounded-full">${inv.status}</span>
-                    </div>
-                `;
-                listContainer.appendChild(item);
-            });
-        }
-
-        function updatePlanDetails() {
-            const planSelect = document.getElementById('plan-select');
-            const detailsDiv = document.getElementById('plan-details');
-            const selectedOption = planSelect.options[planSelect.selectedIndex];
-            const selectedRate = parseFloat(selectedOption.getAttribute('data-rate'));
-            const selectedAmount = parseInt(planSelect.value);
-            const dailyReturn = (selectedAmount * (selectedRate / 100)).toFixed(2);
-            
-            detailsDiv.innerHTML = `Daily Return: ${selectedRate}% ($${dailyReturn} USDT)`;
-        }
-
-        // Initial listeners and setup
-        document.addEventListener('DOMContentLoaded', () => {
-            document.getElementById('plan-select').addEventListener('change', updatePlanDetails);
-            updatePlanDetails(); // Set initial details
-
-             // If Firebase is not configured, show a warning
-            if (!window.auth) {
-                showNotification("Firebase not configured. Data will not be persistent.", 'error');
-            }
-        });
-
-
-        // Global Event Listener for Auth Readiness
-        window.addEventListener('authReady', (e) => {
-            userId = e.detail.userId;
-            isAuthReady = true;
-            document.getElementById('user-id-display').textContent = `User ID: ${userId}`;
-            initializeUserData(userId);
-            
-            // Set a faster interval for profit calculation simulation (e.g., every 15 seconds)
-            setInterval(() => {
-                if(isAuthReady) {
-                    // This function is run inside onSnapshot, so we trigger a data read to initiate the process.
-                    // Instead of an explicit call, the onSnapshot listener handles this when data changes.
-                    // For a robust demo, we can force a read to check for time passage.
-                    // For now, the processDailyProfits is integrated into the onSnapshot callback for safety.
-                }
-            }, 15000); // Check for profit calculation every 15 seconds
-        });
-    </script>
-</body>
-</html>
+                    const currentData =
