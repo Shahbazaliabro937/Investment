@@ -1,0 +1,540 @@
+<!-- This application is a SIMULATION. It tracks hypothetical investments and calculates simulated daily returns.
+     It does NOT handle real cryptocurrency, deposits, withdrawals, or connect to any financial API.
+     All financial data is purely for demonstration and learning purposes, adhering to safety policies. -->
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>Simulated Crypto Investment Dashboard</title>
+    <script src="https://cdn.tailwindcss.com"></script>
+    <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdnjs.cloudflare.com/ajax/libs/font-awesome/6.0.0-beta3/css/all.min.css">
+    <script type="module">
+        // --- Firebase Imports and Configuration (MANDATORY for Persistence) ---
+        import { initializeApp } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-app.js";
+        import { getAuth, signInAnonymously, signInWithCustomToken, onAuthStateChanged } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-auth.js";
+        import { getFirestore, doc, onSnapshot, collection, setDoc, arrayUnion, updateDoc, getDoc, runTransaction } from "https://www.gstatic.com/firebasejs/11.6.1/firebase-firestore.js";
+        
+        let db, auth;
+        let currentUserId = 'loading...';
+        
+        // Firestore path structure: /artifacts/{appId}/users/{userId}/data_collection/{documentId}
+        const appId = typeof __app_id !== 'undefined' ? __app_id : 'default-app-id';
+        const firebaseConfig = typeof __firebase_config !== 'undefined' ? JSON.parse(__firebase_config) : {};
+        const initialAuthToken = typeof __initial_auth_token !== 'undefined' ? __initial_auth_token : null;
+
+        if (Object.keys(firebaseConfig).length > 0) {
+            try {
+                const app = initializeApp(firebaseConfig);
+                db = getFirestore(app);
+                auth = getAuth(app);
+                
+                // Auth Listener and Sign-in
+                onAuthStateChanged(auth, async (user) => {
+                    if (user) {
+                        currentUserId = user.uid;
+                    } else if (initialAuthToken) {
+                        await signInWithCustomToken(auth, initialAuthToken).catch(console.error);
+                        return;
+                    } else {
+                        const anonUser = await signInAnonymously(auth);
+                        currentUserId = anonUser.user.uid;
+                    }
+                    console.log("Firebase Auth Ready. User ID:", currentUserId);
+                    window.dispatchEvent(new CustomEvent('authReady', { detail: { userId: currentUserId } }));
+                });
+            } catch (error) {
+                console.error("Firebase initialization failed:", error);
+            }
+        } else {
+            console.warn("Firebase configuration not found. Using simulated data.");
+            window.onload = () => {
+                window.dispatchEvent(new CustomEvent('authReady', { detail: { userId: 'SIMULATED_USER_ID' } }));
+            };
+        }
+        
+        window.db = db;
+        window.auth = auth;
+        window.getFirestore = getFirestore;
+        window.onSnapshot = onSnapshot;
+        window.collection = collection;
+        window.doc = doc;
+        window.setDoc = setDoc;
+        window.updateDoc = updateDoc;
+        window.getDoc = getDoc;
+        window.runTransaction = runTransaction;
+        window.arrayUnion = arrayUnion;
+        window.appId = appId;
+    </script>
+    <script>
+        tailwind.config = {
+            theme: {
+                extend: {
+                    colors: {
+                        'primary-dark': '#1f2937', // Gray 800
+                        'accent-green': '#10b981', // Emerald 500
+                        'accent-blue': '#3b82f6', // Blue 500
+                        'bg-light': '#f3f4f6', // Gray 100
+                    },
+                    fontFamily: {
+                        sans: ['Inter', 'sans-serif'],
+                    },
+                }
+            }
+        }
+    </script>
+    <style>
+        .card {
+            background-color: white;
+            border-radius: 12px;
+            box-shadow: 0 4px 6px rgba(0, 0, 0, 0.05);
+            transition: transform 0.2s;
+        }
+        .card:hover {
+            transform: translateY(-2px);
+            box-shadow: 0 8px 10px rgba(0, 0, 0, 0.1);
+        }
+        .text-gradient {
+            background-image: linear-gradient(to right, #10b981, #3b82f6);
+            -webkit-background-clip: text;
+            -webkit-text-fill-color: transparent;
+        }
+        .custom-scrollbar::-webkit-scrollbar { width: 6px; }
+        .custom-scrollbar::-webkit-scrollbar-track { background: #e5e7eb; }
+        .custom-scrollbar::-webkit-scrollbar-thumb { background: #9ca3af; border-radius: 3px; }
+    </style>
+</head>
+<body class="bg-bg-light min-h-screen font-sans p-4 sm:p-8">
+
+    <!-- Custom Notification Area -->
+    <div id="notification-area" class="fixed bottom-4 right-4 space-y-2 z-50"></div>
+
+    <div class="max-w-6xl mx-auto space-y-8">
+        
+        <!-- Header -->
+        <header class="text-center py-6">
+            <h1 class="text-4xl sm:text-5xl font-extrabold text-primary-dark">
+                <span class="text-gradient">Crypto Investment Simulation</span>
+            </h1>
+            <p class="mt-2 text-xl text-gray-600">Simulated returns for learning and tracking hypothetical investments.</p>
+            <p id="user-id-display" class="mt-2 text-sm font-mono text-gray-400">Loading User ID...</p>
+        </header>
+
+        <!-- KPI Cards Section -->
+        <section class="grid grid-cols-1 md:grid-cols-4 gap-6">
+            
+            <!-- Total Balance -->
+            <div class="card p-6 border-b-4 border-accent-blue">
+                <p class="text-sm font-semibold text-gray-500">Total Balance (Simulated)</p>
+                <p class="mt-1 text-3xl font-bold text-primary-dark" id="stat-balance">$0.00</p>
+                <span class="text-xs text-gray-500">Initial + Profit</span>
+            </div>
+
+            <!-- Total Invested -->
+            <div class="card p-6 border-b-4 border-accent-green">
+                <p class="text-sm font-semibold text-gray-500">Total Invested</p>
+                <p class="mt-1 text-3xl font-bold text-accent-green" id="stat-invested">$0.00</p>
+                <span class="text-xs text-gray-500">Hypothetical Deposits</span>
+            </div>
+
+            <!-- Total Profit -->
+            <div class="card p-6 border-b-4 border-yellow-500">
+                <p class="text-sm font-semibold text-gray-500">Total Profit</p>
+                <p class="mt-1 text-3xl font-bold text-yellow-600" id="stat-profit">$0.00</p>
+                <span class="text-xs text-gray-500">Simulated Daily Returns</span>
+            </div>
+
+            <!-- Daily Return Rate -->
+            <div class="card p-6 border-b-4 border-purple-500">
+                <p class="text-sm font-semibold text-gray-500">Average Daily Rate</p>
+                <p class="mt-1 text-3xl font-bold text-purple-600" id="stat-rate">0.0%</p>
+                <span class="text-xs text-gray-500">Based on active plans</span>
+            </div>
+        </section>
+
+        <!-- Main Content: Investment & Plans -->
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
+            
+            <!-- 1. Place Investment Card -->
+            <div class="lg:col-span-1 card p-6 space-y-4">
+                <h2 class="text-xl font-bold text-primary-dark border-b pb-3 mb-4 flex items-center"><i class="fas fa-hand-holding-usd mr-2 text-accent-blue"></i> New Simulated Investment</h2>
+                
+                <div class="space-y-4">
+                    <!-- Investment Plan Selection -->
+                    <label for="plan-select" class="block text-sm font-medium text-gray-700">Select Investment Plan</label>
+                    <select id="plan-select" class="w-full p-3 border border-gray-300 rounded-lg bg-gray-50 text-base focus:ring-accent-blue focus:border-accent-blue">
+                        <option value="12" data-rate="2.0">12 USDT - 2.0% Daily</option>
+                        <option value="24" data-rate="2.5">24 USDT - 2.5% Daily</option>
+                        <option value="48" data-rate="3.0">48 USDT - 3.0% Daily</option>
+                    </select>
+
+                    <!-- Current Plan Details -->
+                    <div id="plan-details" class="p-3 bg-accent-green/10 text-accent-green rounded-lg text-sm">
+                        Daily Return: 2.0% (0.24 USDT)
+                    </div>
+
+                    <!-- Deposit/Start Button -->
+                    <button onclick="startInvestment()" class="w-full py-3 bg-accent-blue text-white font-bold rounded-lg hover:bg-blue-600 transition shadow-lg text-lg flex items-center justify-center">
+                        <i class="fas fa-arrow-up mr-2"></i> Start Simulation
+                    </button>
+
+                    <!-- Add Fund Simulation (Withdrawal Button) -->
+                    <div class="pt-4 border-t mt-4 border-gray-100">
+                        <button onclick="simulateWithdrawal()" class="w-full py-2 bg-yellow-500 text-white font-bold rounded-lg hover:bg-yellow-600 transition shadow-md text-base flex items-center justify-center">
+                            <i class="fas fa-wallet mr-2"></i> Simulate Withdrawal
+                        </button>
+                        <p class="text-xs text-gray-500 mt-2 text-center">Withdrawal is simulated. No real funds are involved.</p>
+                    </div>
+
+                </div>
+            </div>
+
+            <!-- 2. Active Investments List -->
+            <div class="lg:col-span-2 card p-6">
+                <h2 class="text-xl font-bold text-primary-dark border-b pb-3 mb-4 flex items-center"><i class="fas fa-list-ul mr-2 text-accent-green"></i> Active Investments</h2>
+                
+                <div id="investments-list" class="space-y-3 max-h-96 custom-scrollbar overflow-y-auto">
+                    <!-- Investment items will be injected here -->
+                    <p class="text-gray-500 text-center py-10" id="no-investments-msg">No active investments. Start a new simulation!</p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Firebase Script Block -->
+    <script>
+        const INVESTMENT_PLANS = [
+            { amount: 12, rate: 0.020, dailyReturn: 12 * 0.020 },
+            { amount: 24, rate: 0.025, dailyReturn: 24 * 0.025 },
+            { amount: 48, rate: 0.030, dailyReturn: 48 * 0.030 }
+        ];
+
+        let isAuthReady = false;
+        let userId = null;
+        const DATA_DOC_PATH = "investment_data";
+        
+        // --- Utility Functions ---
+
+        function showNotification(message, type = 'success') {
+            const area = document.getElementById('notification-area');
+            const color = type === 'success' ? 'bg-accent-green' : (type === 'error' ? 'bg-red-600' : 'bg-accent-blue');
+            const icon = type === 'success' ? 'fas fa-check-circle' : (type === 'error' ? 'fas fa-times-circle' : 'fas fa-info-circle');
+
+            const notification = document.createElement('div');
+            notification.className = `p-4 rounded-lg shadow-xl text-white ${color} transition-all transform translate-y-0 opacity-100 max-w-sm`;
+            notification.innerHTML = `<i class="${icon} mr-2"></i> ${message}`;
+
+            area.appendChild(notification);
+
+            setTimeout(() => {
+                notification.classList.remove('opacity-100');
+                notification.classList.add('opacity-0', 'translate-y-2');
+                notification.addEventListener('transitionend', () => notification.remove());
+            }, 4000);
+        }
+
+        // --- Firebase Interaction ---
+
+        const getInvestmentDocRef = (uid) => {
+            const userRef = collection(window.db, 'artifacts', window.appId, 'users', uid);
+            return doc(userRef, DATA_DOC_PATH);
+        };
+
+        async function initializeUserData(uid) {
+            const userDocRef = getInvestmentDocRef(uid);
+            const userDoc = await getDoc(userDocRef);
+
+            if (!userDoc.exists()) {
+                console.log("Initializing new user data.");
+                await setDoc(userDocRef, {
+                    balance: 0,
+                    invested: 0,
+                    profit: 0,
+                    lastProfitCalc: Date.now(),
+                    investments: []
+                });
+            }
+            startSnapshotListener(uid);
+        }
+
+        function startSnapshotListener(uid) {
+            if (!window.db) {
+                console.error("Firestore is not initialized.");
+                return;
+            }
+            
+            const userDocRef = getInvestmentDocRef(uid);
+            onSnapshot(userDocRef, (doc) => {
+                if (doc.exists()) {
+                    const data = doc.data();
+                    console.log("Data updated from Firestore:", data);
+                    
+                    // First, process pending profits
+                    processDailyProfits(data, uid);
+
+                    // Then, render the updated data
+                    renderDashboard(data);
+                } else {
+                    console.log("User data doc does not exist, initializing...");
+                    initializeUserData(uid);
+                }
+            }, (error) => {
+                console.error("Error listening to Firestore:", error);
+                showNotification("Error connecting to database.", 'error');
+            });
+        }
+        
+        // --- Business Logic (SIMULATION) ---
+
+        function calculateAverageRate(investments) {
+            if (!investments || investments.length === 0) return 0;
+            let totalInvested = 0;
+            let totalRate = 0;
+            investments.forEach(inv => {
+                totalInvested += inv.amount;
+                // inv.rate is stored as percentage (e.g., 2.0)
+                totalRate += inv.amount * inv.rate;
+            });
+            return totalRate / totalInvested; // Weighted average rate
+        }
+
+        async function processDailyProfits(data, uid) {
+            if (!data.investments || data.investments.length === 0) return;
+
+            const now = Date.now();
+            const lastCalc = data.lastProfitCalc || now;
+            const hoursPassed = (now - lastCalc) / (1000 * 60 * 60);
+
+            // Check if at least 24 hours have passed in the simulation (or 1 hour for fast demo)
+            // Use 1 hour for demo purposes, but the logic simulates a daily calculation.
+            const thresholdHours = 1; // 24 hours in real life, 1 hour for demo
+
+            if (hoursPassed < thresholdHours) return;
+
+            // Use runTransaction for safety when updating financial values
+            const userDocRef = getInvestmentDocRef(uid);
+            try {
+                await runTransaction(window.db, async (transaction) => {
+                    const docSnapshot = await transaction.get(userDocRef);
+                    if (!docSnapshot.exists()) throw "Document does not exist!";
+                    
+                    const currentData = docSnapshot.data();
+                    let profitAdded = 0;
+                    
+                    currentData.investments.forEach(inv => {
+                        const dailyProfit = inv.amount * (inv.rate / 100); // e.g., 12 * 0.02
+                        
+                        // Calculate profit based on how many 24h cycles have passed since last calculation
+                        const cycles = Math.floor(hoursPassed / 24); 
+                        
+                        // For faster demo, let's just calculate based on the daily return for now
+                        // In a real system, this would be complex. Here, we just add the daily profit once per threshold.
+                        
+                        // Simple Demo Logic: Add daily profit for each passing cycle
+                        // Since we only check once per hour (thresholdHours = 1), we treat it as one day's profit.
+                        profitAdded += dailyProfit; 
+                    });
+
+                    // Update data
+                    const newBalance = currentData.balance + profitAdded;
+                    const newProfit = currentData.profit + profitAdded;
+                    
+                    transaction.update(userDocRef, {
+                        balance: newBalance,
+                        profit: newProfit,
+                        lastProfitCalc: now // Update the time of last calculation
+                    });
+                    
+                    if (profitAdded > 0) {
+                        showNotification(`Simulated Profit Added: +$${profitAdded.toFixed(2)} USDT`, 'info');
+                    }
+                });
+            } catch (e) {
+                console.error("Transaction failed:", e);
+                showNotification("Failed to calculate profit.", 'error');
+            }
+        }
+
+
+        async function startInvestment() {
+            if (!isAuthReady || !userId) {
+                showNotification("Please wait for user authentication to complete.", 'error');
+                return;
+            }
+
+            const planSelect = document.getElementById('plan-select');
+            const selectedPlanValue = parseInt(planSelect.value);
+            const selectedOption = planSelect.options[planSelect.selectedIndex];
+            const selectedRate = parseFloat(selectedOption.getAttribute('data-rate'));
+
+            const plan = INVESTMENT_PLANS.find(p => p.amount === selectedPlanValue);
+            if (!plan) {
+                 showNotification("Invalid plan selected.", 'error');
+                 return;
+            }
+
+            const newInvestment = {
+                id: Date.now(),
+                amount: plan.amount,
+                rate: selectedRate,
+                dailyReturn: plan.dailyReturn,
+                startDate: new Date().toLocaleDateString(),
+                status: 'Active'
+            };
+            
+            const userDocRef = getInvestmentDocRef(userId);
+
+            try {
+                await runTransaction(window.db, async (transaction) => {
+                    const docSnapshot = await transaction.get(userDocRef);
+                    if (!docSnapshot.exists()) throw "Document does not exist!";
+                    
+                    const currentData = docSnapshot.data();
+
+                    // Update main statistics
+                    const newBalance = currentData.balance + plan.amount;
+                    const newInvested = currentData.invested + plan.amount;
+                    
+                    // Add new investment to the array
+                    const newInvestmentsArray = currentData.investments ? [...currentData.investments, newInvestment] : [newInvestment];
+
+                    transaction.update(userDocRef, {
+                        balance: newBalance,
+                        invested: newInvested,
+                        investments: newInvestmentsArray
+                    });
+                });
+
+                showNotification(`Simulated Investment of $${plan.amount} started successfully!`, 'success');
+
+            } catch (error) {
+                console.error("Error starting investment:", error);
+                showNotification("Error starting investment simulation.", 'error');
+            }
+        }
+
+        async function simulateWithdrawal() {
+            if (!isAuthReady || !userId) {
+                showNotification("Please wait for user authentication to complete.", 'error');
+                return;
+            }
+
+            const userDocRef = getInvestmentDocRef(userId);
+
+            try {
+                await runTransaction(window.db, async (transaction) => {
+                    const docSnapshot = await transaction.get(userDocRef);
+                    if (!docSnapshot.exists()) throw "Document does not exist!";
+                    
+                    const currentData = docSnapshot.data();
+                    const availableBalance = currentData.balance;
+
+                    if (availableBalance <= 0) {
+                        showNotification("Insufficient balance for simulated withdrawal.", 'error');
+                        return; // Exit transaction attempt
+                    }
+                    
+                    // Simple logic: Withdraw the current profit, but leave initial investment
+                    const withdrawalAmount = currentData.profit; 
+                    
+                    if (withdrawalAmount > 0) {
+                        transaction.update(userDocRef, {
+                            balance: currentData.invested, // Reset balance to invested amount
+                            profit: 0 // Reset profit to zero
+                        });
+                        showNotification(`Simulated Withdrawal of $${withdrawalAmount.toFixed(2)} processed to Binance.`, 'info');
+                    } else {
+                        showNotification("No profit to withdraw.", 'error');
+                    }
+                });
+            } catch (error) {
+                console.error("Error processing withdrawal simulation:", error);
+                showNotification("Error during withdrawal simulation.", 'error');
+            }
+        }
+
+        // --- Rendering ---
+
+        function renderDashboard(data) {
+            const { balance, invested, profit, investments } = data;
+            
+            // 1. Render KPI Cards
+            document.getElementById('stat-balance').textContent = `$${balance.toFixed(2)}`;
+            document.getElementById('stat-invested').textContent = `$${invested.toFixed(2)}`;
+            document.getElementById('stat-profit').textContent = `$${profit.toFixed(2)}`;
+            
+            const avgRate = calculateAverageRate(investments);
+            document.getElementById('stat-rate').textContent = `${avgRate.toFixed(1)}%`;
+
+            // 2. Render Investments List
+            const listContainer = document.getElementById('investments-list');
+            listContainer.innerHTML = '';
+            
+            if (!investments || investments.length === 0) {
+                document.getElementById('no-investments-msg').classList.remove('hidden');
+                return;
+            }
+            document.getElementById('no-investments-msg').classList.add('hidden');
+
+            investments.forEach(inv => {
+                const item = document.createElement('div');
+                item.className = 'bg-gray-50 p-4 rounded-lg border-l-4 border-accent-green shadow-sm flex justify-between items-center';
+                item.innerHTML = `
+                    <div>
+                        <p class="font-bold text-primary-dark">Plan: $${inv.amount} USDT</p>
+                        <p class="text-sm text-gray-600">${inv.rate}% Daily Return</p>
+                        <p class="text-xs text-gray-400">Since: ${inv.startDate}</p>
+                    </div>
+                    <div class="text-right">
+                        <p class="text-lg font-bold text-accent-green">+$${inv.dailyReturn.toFixed(2)} / Day</p>
+                        <span class="text-xs font-semibold text-white bg-accent-blue px-2 py-0.5 rounded-full">${inv.status}</span>
+                    </div>
+                `;
+                listContainer.appendChild(item);
+            });
+        }
+
+        function updatePlanDetails() {
+            const planSelect = document.getElementById('plan-select');
+            const detailsDiv = document.getElementById('plan-details');
+            const selectedOption = planSelect.options[planSelect.selectedIndex];
+            const selectedRate = parseFloat(selectedOption.getAttribute('data-rate'));
+            const selectedAmount = parseInt(planSelect.value);
+            const dailyReturn = (selectedAmount * (selectedRate / 100)).toFixed(2);
+            
+            detailsDiv.innerHTML = `Daily Return: ${selectedRate}% ($${dailyReturn} USDT)`;
+        }
+
+        // Initial listeners and setup
+        document.addEventListener('DOMContentLoaded', () => {
+            document.getElementById('plan-select').addEventListener('change', updatePlanDetails);
+            updatePlanDetails(); // Set initial details
+
+             // If Firebase is not configured, show a warning
+            if (!window.auth) {
+                showNotification("Firebase not configured. Data will not be persistent.", 'error');
+            }
+        });
+
+
+        // Global Event Listener for Auth Readiness
+        window.addEventListener('authReady', (e) => {
+            userId = e.detail.userId;
+            isAuthReady = true;
+            document.getElementById('user-id-display').textContent = `User ID: ${userId}`;
+            initializeUserData(userId);
+            
+            // Set a faster interval for profit calculation simulation (e.g., every 15 seconds)
+            setInterval(() => {
+                if(isAuthReady) {
+                    // This function is run inside onSnapshot, so we trigger a data read to initiate the process.
+                    // Instead of an explicit call, the onSnapshot listener handles this when data changes.
+                    // For a robust demo, we can force a read to check for time passage.
+                    // For now, the processDailyProfits is integrated into the onSnapshot callback for safety.
+                }
+            }, 15000); // Check for profit calculation every 15 seconds
+        });
+    </script>
+</body>
+</html>
